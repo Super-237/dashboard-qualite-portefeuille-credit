@@ -1,0 +1,6 @@
+# Force la detection de langage pour GitHub Linguist
+*.sql linguist-language=TSQL
+*.cs linguist-language=C#
+*.dtsx linguist-vendored
+*.database linguist-generated
+*.dtproj linguist-generated

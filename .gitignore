@@ -1,0 +1,28 @@
+﻿# Power BI (contient les donnees embarquees)
+*.pbix
+
+# SSIS - packages ET fichiers projet : contiennent les chaines de connexion
+# reelles (serveur, base source). Ne jamais publier.
+*.dtsx
+*.dtproj
+*.database
+*.slnx
+*.params
+*.conmgr
+
+# Visual Studio
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Rapports d'audit de modele et exports d'analyse (process interne)
+*.xlsx
+
+# Guides de construction internes (notes de travail, non publiees)
+docs/guide_*.md
+
+# Divers
+Thumbs.db
+*.tmp

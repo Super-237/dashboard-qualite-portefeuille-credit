@@ -1,0 +1,261 @@
+/*===============================================================================
+  Projet : Portfolio Power BI - Qualite du portefeuille de credit (EMF)
+  Fichier: mesures_dax.dax
+  Objet  : Mesures DAX du modele, avec commentaire documentaire integre.
+  Note   : chaque mesure porte, apres le "=", un commentaire (-- ...) precisant
+           son objet et, le cas echeant, ses limites d'interpretation. Ce meme
+           texte alimente la propriete "Description" de la mesure, affichee en
+           info-bulle dans le volet de donnees.
+
+  PRINCIPE CLE - stock vs flux :
+   - FACT_PRET est un SNAPSHOT PERIODIQUE (3 photos : 30/09 2022, 2023, 2024).
+     Un indicateur de stock (encours, PAR, comptages) n'a de sens qu'a UN SEUL
+     arrete. D'ou le garde-fou HASONEVALUE : sans arrete unique, on renvoie vide
+     plutot qu'une somme de plusieurs photos, qui serait silencieusement FAUSSE.
+   - FACT_ECHEANCE est un FLUX (echeances datees) : il se decoupe librement dans
+     le temps et n'est pas lie a DIM_ARRETE.
+===============================================================================*/
+
+
+/*--- ACTIVITE COMMERCIALE (Page 1) -------------------------------------------*/
+
+Encours =
+-- Encours total du portefeuille vivant (capital restant du) a l'arrete.
+-- GARDE-FOU : sans arrete unique, on ne somme pas plusieurs photos.
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), SUM ( FACT_PRET[ENCOURS] ) )
+
+Capital initial du portefeuille vivant =
+-- Montant initialement decaisse des prets VIVANTS a l'arrete.
+-- ATTENTION : ce n'est PAS la production de la periode (les decaissements de
+-- l'annee), c'est le capital d'origine du stock en cours. Ne pas confondre.
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), SUM ( FACT_PRET[MONTANT_PRET] ) )
+
+Nb prets actifs =
+-- Nombre de prets vivants a l'arrete.
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), COUNTROWS ( FACT_PRET ) )
+
+Nb emprunteurs =
+-- Nombre d'emprunteurs distincts (clients anonymises) a l'arrete.
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), DISTINCTCOUNT ( FACT_PRET[CLIENT_ID] ) )
+
+Encours moyen par pret =
+-- Encours moyen par pret. (Ancien nom "Ticket moyen" : trompeur, car il
+-- suggerait le montant moyen accorde, alors qu'on mesure bien l'ENCOURS moyen.)
+DIVIDE ( [Encours], [Nb prets actifs] )
+
+
+/*--- QUALITE / RISQUE (Page 2) -----------------------------------------------*/
+
+Encours PAR30 =
+-- Encours des prets en retard de plus de 30 jours (drapeau DIM_CLASSE_RETARD).
+CALCULATE ( [Encours], DIM_CLASSE_RETARD[EST_PAR30] = TRUE () )
+
+Encours PAR90 =
+-- Encours des prets en retard de plus de 90 jours.
+CALCULATE ( [Encours], DIM_CLASSE_RETARD[EST_PAR90] = TRUE () )
+
+Encours PAR120 =
+-- Encours des prets en retard de plus de 120 jours.
+CALCULATE ( [Encours], DIM_CLASSE_RETARD[EST_PAR120] = TRUE () )
+
+PAR 30 % =
+-- Part de l'encours en retard de plus de 30 jours (ratio PAR 30).
+DIVIDE ( [Encours PAR30], [Encours] )
+
+PAR 90 % =
+-- Part de l'encours en retard de plus de 90 jours.
+DIVIDE ( [Encours PAR90], [Encours] )
+
+PAR 120 % =
+-- Part de l'encours en retard de plus de 120 jours.
+DIVIDE ( [Encours PAR120], [Encours] )
+
+Encours sain =
+-- Encours non a risque = portefeuille hors retard de plus de 30 jours.
+-- NB : verifier sa chaine de format (elle etait en "€" par defaut) -> FCFA.
+[Encours] - [Encours PAR30]
+
+Encours sain % =
+-- Part saine du portefeuille. Complement exact du PAR 30 (sain % + PAR 30 % = 100 %).
+DIVIDE ( [Encours sain], [Encours] )
+
+Ref Encours sain =
+-- Etiquette de reference pour la carte Encours de la Page 2 (ex : "74,5 % sain").
+FORMAT ( [Encours sain %], "0.0%" ) & " sain"
+
+
+/*--- PRODUCTION (FACT_DECAISSEMENT) ------------------------------------------*/
+/*    Mesure ce que le gestionnaire a MIS EN PLACE sur l'exercice (son action),
+      et non le stock qu'il detient (qui peut etre herite ou transfere).        */
+
+Montant decaisse periode =
+-- Montant total des credits mis en place sur l'exercice (jan -> sept).
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), SUM ( FACT_DECAISSEMENT[MONTANT_DECAISSE] ) )
+
+Nb credits mis en place =
+-- Nombre de dossiers decaisses sur l'exercice.
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), COUNTROWS ( FACT_DECAISSEMENT ) )
+
+Production perdue =
+-- Part de la production de l'exercice qui a fini en perte (ETAT_FINAL = PE).
+CALCULATE ( [Montant decaisse periode], FACT_DECAISSEMENT[EST_PERTE] = TRUE () )
+
+Taux de perte production % =
+-- Qualite de la production : quelle part de ce qui a ete octroye a mal tourne.
+-- ATTENTION : comparer ce taux ENTRE exercices est biaise (un millesime ancien
+-- a eu plus de temps pour se degrader). La comparaison est valable ENTRE
+-- GESTIONNAIRES d'un MEME exercice, ou le temps ecoule est identique pour tous.
+DIVIDE ( [Production perdue], [Montant decaisse periode] )
+
+
+/*--- GESTIONNAIRES & CLIENTELE (Page 3) --------------------------------------*/
+
+Nb gestionnaires =
+-- Nombre de gestionnaires portant de l'encours a l'arrete (meme garde-fou).
+IF ( HASONEVALUE ( DIM_ARRETE[ARRETE_ID] ), DISTINCTCOUNT ( FACT_PRET[GEST_ID] ) )
+
+Encours moyen par gestionnaire =
+-- Encours moyen gere par gestionnaire (charge de portefeuille).
+DIVIDE ( [Encours], [Nb gestionnaires] )
+
+Part encours femmes =
+-- Part de l'encours detenue par des emprunteuses (angle microfinance).
+-- Les valeurs de DIM_CLIENT[GENRE] sont : Femme / Homme / Entreprise / Groupe.
+DIVIDE ( CALCULATE ( [Encours], DIM_CLIENT[GENRE] = "Femme" ), [Encours] )
+
+Part des 10 plus gros prets =
+-- Concentration : part des 10 plus gros encours dans l'encours total.
+VAR Top10 = TOPN ( 10, VALUES ( FACT_PRET[NUM_DOSSIER] ), [Encours], DESC )
+VAR EncoursTop10 = CALCULATE ( [Encours], KEEPFILTERS ( Top10 ) )
+RETURN DIVIDE ( EncoursTop10, [Encours] )
+
+
+/*--- RECOUVREMENT (flux, via FACT_ECHEANCE) ----------------------------------*/
+/*    Pas de garde-fou d'arrete ici : le flux n'est pas lie a DIM_ARRETE.      */
+
+Capital du =
+-- Capital attendu (du) sur les echeances de la periode.
+SUM ( FACT_ECHEANCE[CAPITAL_DU] )
+
+Capital encaisse =
+-- Capital effectivement encaisse sur ces echeances.
+SUM ( FACT_ECHEANCE[CAPITAL_ENCAISSE] )
+
+Taux de remboursement =
+-- Encaisse / du. Cumule si pas de filtre temps, mensuel si l'axe porte le mois.
+DIVIDE ( [Capital encaisse], [Capital du] )
+
+
+/*--- COMPARAISON N-1 (snapshot periodique via DIM_ARRETE) --------------------*/
+
+Encours N-1 =
+-- Encours a l'arrete de l'annee precedente. REMOVEFILTERS ne retire QUE le
+-- filtre d'arrete : le contexte categorie (agence, produit) est conserve.
+VAR AnneeArrete = SELECTEDVALUE ( DIM_ARRETE[ANNEE] )
+RETURN
+CALCULATE (
+    [Encours],
+    REMOVEFILTERS ( DIM_ARRETE ),
+    DIM_ARRETE[ANNEE] = AnneeArrete - 1
+)
+
+PAR 30 % N-1 =
+-- PAR 30 a l'arrete de l'annee precedente (meme principe que [Encours N-1]).
+-- Sert a juger si la QUALITE se degrade (et surtout pas l'encours).
+VAR AnneeArrete = SELECTEDVALUE ( DIM_ARRETE[ANNEE] )
+RETURN
+CALCULATE (
+    [PAR 30 %],
+    REMOVEFILTERS ( DIM_ARRETE ),
+    DIM_ARRETE[ANNEE] = AnneeArrete - 1
+)
+
+Ecart Encours =
+-- Variation de l'encours par rapport a N-1 (valeur absolue).
+[Encours] - [Encours N-1]
+
+Ecart Encours % =
+-- Variation de l'encours par rapport a N-1 (en pourcentage).
+DIVIDE ( [Encours] - [Encours N-1], [Encours N-1] )
+
+
+/*--- RECOUVREMENT YTD (a fin septembre : comparaison annuelle equitable) -----*/
+
+Capital du YTD sept =
+-- Capital du, borne au cumul janvier -> septembre (comparaison equitable).
+CALCULATE ( [Capital du], DIM_CALENDRIER[MOIS] <= 9 )
+
+Capital encaisse YTD sept =
+-- Capital encaisse, borne au cumul janvier -> septembre.
+CALCULATE ( [Capital encaisse], DIM_CALENDRIER[MOIS] <= 9 )
+
+Taux de remboursement YTD =
+-- Taux de remboursement en cumul a fin septembre (pour comparer N vs N-1).
+DIVIDE ( [Capital encaisse YTD sept], [Capital du YTD sept] )
+
+
+/*--- CARTE DE VARIATION ENRICHIE (flèche + couleur) --------------------------*/
+
+Var Encours texte =
+-- Fleche + variation vs N-1, pour la carte de variation de la Page 1.
+-- Vide s'il n'y a pas d'annee de comparaison (cas de l'arrete le plus ancien).
+VAR v = [Ecart Encours %]
+RETURN
+IF (
+    ISBLANK ( [Encours N-1] ),
+    "",
+    IF ( v >= 0, UNICHAR ( 9650 ), UNICHAR ( 9660 ) )
+        & " " & FORMAT ( ABS ( v ), "0.0%" ) & " vs N-1"
+)
+
+Var Encours couleur =
+-- Vert si croissance, rouge si recul. UNIQUEMENT pour une variation :
+-- ne jamais utiliser ce couple vert/rouge comme couleur de serie neutre.
+IF ( [Ecart Encours %] >= 0, "#2F7D5B", "#B23A28" )
+
+
+/*--- SYNTHESES DYNAMIQUES (storytelling explicite) ---------------------------*/
+/*    A inserer via une zone de texte dynamique :                              */
+/*    Insertion > Zone de texte > selectionner le texte > icone fx > mesure.   */
+
+Synthese P1 =
+-- Phrase de synthese Page 1 (Activite).
+-- NB 1 : jamais de texte entre guillemets dans une chaine FORMAT (DAX n'accepte
+--        pas l'echappement) : on divise, on formate, on concatene a l'exterieur.
+-- NB 2 : sur l'arrete le plus ancien il n'y a pas de N-1 ; on n'affirme alors
+--        aucune tendance plutot que d'annoncer une fausse variation.
+VAR EncoursMd = FORMAT ( DIVIDE ( [Encours], 1000000000 ), "0.0" )
+VAR EcartN1 = [Ecart Encours %]
+VAR Comparaison =
+    IF (
+        ISBLANK ( [Encours N-1] ),
+        "",
+        ", " & IF ( EcartN1 >= 0, "en hausse de ", "en baisse de " )
+            & FORMAT ( ABS ( EcartN1 ), "0.0%" ) & " vs l'annee precedente"
+    )
+RETURN
+"Portefeuille de " & EncoursMd & " Md FCFA" & Comparaison & "."
+
+Synthese P3 =
+-- Phrase de synthese Page 3 (Gestionnaires & clientele).
+VAR NbGest = [Nb gestionnaires]
+VAR PartF = [Part encours femmes]
+RETURN
+"Encours porte par " & FORMAT ( NbGest, "0" ) & " gestionnaires ; "
+    & FORMAT ( PartF, "0.0%" ) & " de l'encours est detenu par des femmes."
+
+Synthese P2 =
+-- Phrase de synthese Page 2 (Qualite & risque).
+-- La tendance se juge sur le PAR (la qualite), PAS sur l'encours : un encours
+-- qui monte ne dit rien de la qualite. Sans N-1, on n'affirme aucune tendance.
+VAR ParN1 = [PAR 30 % N-1]
+VAR Comparaison =
+    IF (
+        ISBLANK ( ParN1 ),
+        "",
+        " ; la qualite du portefeuille "
+            & IF ( [PAR 30 %] >= ParN1, "se degrade", "s'ameliore" )
+            & " par rapport a l'annee precedente"
+    )
+RETURN
+"PAR 30 a " & FORMAT ( [PAR 30 %], "0.0%" ) & Comparaison & "."

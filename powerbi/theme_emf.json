@@ -1,0 +1,72 @@
+{
+  "name": "EMF - Portefeuille de credit",
+  "dataColors": [
+    "#1F3B57",
+    "#3E6D9C",
+    "#7FA6C9",
+    "#B0C4D9",
+    "#C0392B",
+    "#E08E0B",
+    "#6B7C8C",
+    "#A9B7C2"
+  ],
+  "background": "#FFFFFF",
+  "foreground": "#2C3E50",
+  "tableAccent": "#1F3B57",
+  "good": "#2E7D5B",
+  "neutral": "#E08E0B",
+  "bad": "#C0392B",
+  "maximum": "#C0392B",
+  "center": "#E08E0B",
+  "minimum": "#1F3B57",
+  "textClasses": {
+    "title": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 13,
+      "color": "#1F3B57"
+    },
+    "label": {
+      "fontFace": "Segoe UI",
+      "fontSize": 10,
+      "color": "#2C3E50"
+    },
+    "callout": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 28,
+      "color": "#1F3B57"
+    }
+  },
+  "visualStyles": {
+    "*": {
+      "*": {
+        "title": [
+          {
+            "show": true,
+            "fontColor": { "solid": { "color": "#1F3B57" } },
+            "fontSize": 12,
+            "fontFamily": "Segoe UI Semibold"
+          }
+        ],
+        "background": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#FFFFFF" } },
+            "transparency": 0
+          }
+        ],
+        "border": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#E1E6EB" } },
+            "radius": 6
+          }
+        ],
+        "visualHeader": [
+          {
+            "show": false
+          }
+        ]
+      }
+    }
+  }
+}
